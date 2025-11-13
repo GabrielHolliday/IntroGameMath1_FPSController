@@ -13,6 +13,8 @@ public class FPS_Ben : MonoBehaviour
     public float airControl;
     public float groundControl;
     public float gravity;
+    public float takeOffSpeed;
+    public float glideBuffer;
 
     public float yLookSensitivity;
     public float xLookSensitivity;
@@ -32,7 +34,9 @@ public class FPS_Ben : MonoBehaviour
     private Camera cam;
 
     private float inAirSpeedFallof = 0.5f;
-    private (float, float) minMaxPitchLook = (-250f,250f);
+    private (float, float) minMaxPitchLook = (-250f, 250f);
+    private float targetPlayerHeight; //this is for making things look smooth
+    private float internalGlideBuffer;
 
 
 
@@ -77,6 +81,7 @@ public class FPS_Ben : MonoBehaviour
     private void Jump(InputAction.CallbackContext context)
     {
         if (plrState == PlrState.FreeFall | plrState == PlrState.FreeFall) return;
+        internalGlideBuffer = glideBuffer;
         impliedMoveDir = transform.up * jumpHeight;
         velocity = Vector3.Lerp(velocity, impliedMoveDir, 0.1f);
     }
@@ -89,7 +94,7 @@ public class FPS_Ben : MonoBehaviour
         //state stuff
         bool clampPitch = true;
         RaycastHit hit;
-        if (Physics.Raycast(transform.position, transform.up * -1, out hit, transform.localScale.y) && plrState != PlrState.Tumble)
+        if (Physics.SphereCast(transform.position, 0.5f,transform.up * -1, out hit, transform.localScale.y + 0.1f) && plrState != PlrState.Tumble)
         {
             if (sprint.action.ReadValue<float>() != 0f)
             {
@@ -98,15 +103,16 @@ public class FPS_Ben : MonoBehaviour
             else
             {
                 plrState = PlrState.OnGround;   
-            }            
-            velocity = new Vector3(velocity.x, Clamp(velocity.y, Mathf.Infinity,0), velocity.z);
+            }
+            velocity = new Vector3(velocity.x, Clamp(velocity.y, Mathf.Infinity, 0), velocity.z);
+            
         }
         else if (plrState != PlrState.Tumble)
         {
             clampPitch = false;
             plrState = PlrState.FreeFall;
         }
-        Debug.Log(hit.distance);
+        //Debug.Log(hit.point);
         //
         
         impliedMoveDir = Vector3.zero;
@@ -138,6 +144,9 @@ public class FPS_Ben : MonoBehaviour
             impliedMoveDir += transform.up * -gravity;
         }
 
+        
+
+        
         velocity = Vector3.Lerp(velocity, impliedMoveDir, control);
 
         
@@ -146,14 +155,28 @@ public class FPS_Ben : MonoBehaviour
         pitch += look.action.ReadValue<Vector2>().y;
         yaw += look.action.ReadValue<Vector2>().x;
 
+       
+        
+        
+
 
         if (clampPitch) pitch = Clamp(pitch, minMaxPitchLook.Item2, minMaxPitchLook.Item1);
         transform.position = transform.position + velocity;
-        transform.position -= transform.up * hit.distance - transform.localScale/2;
+
+        if ((plrState != PlrState.FreeFall | plrState!= PlrState.Tumble)  && velocity.x <= takeOffSpeed && internalGlideBuffer <1f)
+        {
+            targetPlayerHeight = hit.point.y + 1f;//ground collision
+            Debug.Log("youre on the ground");
+        }
+        else (targetPlayerHeight) = transform.position.y;
+        float distanceMulti = Clamp(1f - (1f / math.abs(targetPlayerHeight - transform.position.y)), 1f, 0.1f);
+        transform.position = Vector3.Lerp(transform.position, new Vector3(transform.position.x, targetPlayerHeight, transform.position.z), distanceMulti);
+
+        
         cam.transform.localRotation = quaternion.Euler(pitch * -0.01f * yLookSensitivity, 0, 0);
         transform.rotation = quaternion.Euler(0, yaw * 0.01f * xLookSensitivity, 0);
-        
 
+        glideBuffer -= Time.deltaTime;
 
        
     }
