@@ -1,13 +1,18 @@
 using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SocialPlatforms;
 
 public class FPS_Ben : MonoBehaviour
 {
     //public stuff
-    public int speed;
-    public int jumpHeight;
-    public int airControllMulti;
+    public float speed;
+    public float sprintSpeed;
+    public float jumpHeight;
+    public float airControl;
+    public float groundControl;
+    public float gravity;
 
     public float yLookSensitivity;
     public float xLookSensitivity;
@@ -15,6 +20,9 @@ public class FPS_Ben : MonoBehaviour
 
     public InputActionReference move;
     public InputActionReference look;
+    public InputActionReference jump;
+    public InputActionReference sprint;
+
     //scaled down
 
     private Vector3 impliedMoveDir = Vector3.zero;
@@ -23,43 +31,125 @@ public class FPS_Ben : MonoBehaviour
 
     private Camera cam;
 
-    private bool onGround = true;
-    private bool sprinting = true;
+    private float inAirSpeedFallof = 0.5f;
+    private (float, float) minMaxPitchLook = (-250f,250f);
+
+
+
+    //states
+
+    public enum PlrState
+    {
+        Sprinting,
+        OnGround,
+        FreeFall,
+        Tumble,
+    }
+    public PlrState plrState = PlrState.OnGround;
+    //
 
     //camera stuff
     private float pitch = 0;
     private float yaw = 0;
+
+
     //
+    private float Clamp(float num, float maxNum, float minNum)
+    {
+        if (num > maxNum) return maxNum;
+        else if (num < minNum) return minNum;
+        return num;
+    }
     
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
         cam = transform.Find("Main Camera").GetComponent<Camera>();
 
+        //state stuff
+        jump.action.started += Jump;
+    
+        
+        //
         
     }
 
-    private void Jump()
+    private void Jump(InputAction.CallbackContext context)
     {
-
+        if (plrState == PlrState.FreeFall | plrState == PlrState.FreeFall) return;
+        impliedMoveDir = transform.up * jumpHeight;
+        velocity = Vector3.Lerp(velocity, impliedMoveDir, 0.1f);
     }
+
+    
 
     // Update is called once per frame
     void Update()
     {
+        //state stuff
+        bool clampPitch = true;
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position, transform.up * -1, out hit, transform.localScale.y) && plrState != PlrState.Tumble)
+        {
+            if (sprint.action.ReadValue<float>() != 0f)
+            {
+                plrState = PlrState.Sprinting;
+            }
+            else
+            {
+                plrState = PlrState.OnGround;   
+            }            
+            velocity = new Vector3(velocity.x, Clamp(velocity.y, Mathf.Infinity,0), velocity.z);
+        }
+        else if (plrState != PlrState.Tumble)
+        {
+            clampPitch = false;
+            plrState = PlrState.FreeFall;
+        }
+        Debug.Log(hit.distance);
+        //
+        
         impliedMoveDir = Vector3.zero;
-        
-        impliedMoveDir = transform.forward * move.action.ReadValue<Vector2>().y * ((float)speed) * Time.deltaTime;
-        impliedMoveDir += transform.right * move.action.ReadValue<Vector2>().x  * ((float)speed) * Time.deltaTime;
-        
-        
 
-        velocity = Vector3.Lerp(velocity, impliedMoveDir, 0.01f);
+        float localSpeed = 0;
+        float control = groundControl;
+        switch(plrState)
+        {
+            case PlrState.OnGround:
+                localSpeed = speed;
+                break;
+            case PlrState.Sprinting:
+                localSpeed = sprintSpeed;
+                break;
+            case PlrState.FreeFall:
+                impliedMoveDir = velocity;
+                localSpeed = speed;
+                control = airControl;
+                break;
+            case PlrState.Tumble:
+                localSpeed = 0;
+                control = 0;
+                break;
+        }
+        impliedMoveDir += transform.forward * move.action.ReadValue<Vector2>().y * ((float)localSpeed) * Time.deltaTime;
+        impliedMoveDir += transform.right * move.action.ReadValue<Vector2>().x * ((float)localSpeed) * Time.deltaTime;
+        if (plrState == PlrState.FreeFall)
+        {
+            impliedMoveDir += transform.up * -gravity;
+        }
+
+        velocity = Vector3.Lerp(velocity, impliedMoveDir, control);
+
+        
+        
 
         pitch += look.action.ReadValue<Vector2>().y;
         yaw += look.action.ReadValue<Vector2>().x;
-      
+
+
+        if (clampPitch) pitch = Clamp(pitch, minMaxPitchLook.Item2, minMaxPitchLook.Item1);
         transform.position = transform.position + velocity;
+        transform.position -= transform.up * hit.distance - transform.localScale/2;
         cam.transform.localRotation = quaternion.Euler(pitch * -0.01f * yLookSensitivity, 0, 0);
         transform.rotation = quaternion.Euler(0, yaw * 0.01f * xLookSensitivity, 0);
         
