@@ -1,8 +1,9 @@
+
 using Unity.Mathematics;
-using Unity.VisualScripting;
+
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.SocialPlatforms;
+
 
 public class FPS_Ben : MonoBehaviour
 {
@@ -18,6 +19,8 @@ public class FPS_Ben : MonoBehaviour
 
     public float yLookSensitivity;
     public float xLookSensitivity;
+
+    public float MaxSlope;
     //
 
     public InputActionReference move;
@@ -36,7 +39,7 @@ public class FPS_Ben : MonoBehaviour
     private float inAirSpeedFallof = 0.5f;
     private (float, float) minMaxPitchLook = (-250f, 250f);
     private float targetPlayerHeight; //this is for making things look smooth
-    private float internalGlideBuffer;
+    private float internalGlideBuffer = 0;
 
 
 
@@ -94,8 +97,11 @@ public class FPS_Ben : MonoBehaviour
         //state stuff
         bool clampPitch = true;
         RaycastHit hit;
-        if (Physics.SphereCast(transform.position, 0.5f,transform.up * -1, out hit, transform.localScale.y + 0.1f) && plrState != PlrState.Tumble)
+        Physics.Raycast(transform.position,UnityEngine.Vector3.down, out hit, 5f);
+        //Debug.Log(Vector3.Angle(hit.normal, Vector3.up));
+        if (Vector3.Angle(hit.normal, Vector3.up) <= MaxSlope && hit.distance!= 0 && hit.distance < transform.localScale.y + 1.1f && plrState != PlrState.Tumble)
         {
+            
             if (sprint.action.ReadValue<float>() != 0f)
             {
                 plrState = PlrState.Sprinting;
@@ -110,6 +116,7 @@ public class FPS_Ben : MonoBehaviour
         else if (plrState != PlrState.Tumble)
         {
             clampPitch = false;
+            
             plrState = PlrState.FreeFall;
         }
         //Debug.Log(hit.point);
@@ -144,7 +151,25 @@ public class FPS_Ben : MonoBehaviour
             impliedMoveDir += transform.up * -gravity;
         }
 
-        
+        //wall bonking-----------------
+        RaycastHit hitTwo;
+        Physics.SphereCast(transform.position, 1f, impliedMoveDir, out hitTwo, 0.2f);
+        if(hitTwo.distance !=0)//bonk
+        {
+            float bounceOffAngle = 0;
+            float bounceOffSpeedLoss = 1;
+            bounceOffAngle = Vector3.Angle(hitTwo.normal, Vector3.up);
+            //bounceOffSpeedLoss = bounceOffAngle / 90;
+
+            velocity = Vector3.Reflect(velocity, hitTwo.normal);
+            velocity = velocity * bounceOffSpeedLoss;
+
+            //scootching the player back
+            velocity += hitTwo.normal * (0.1f -hitTwo.distance);
+
+            Debug.Log($"{bounceOffAngle}, {bounceOffSpeedLoss}");
+        }
+        //
 
         
         velocity = Vector3.Lerp(velocity, impliedMoveDir, control);
@@ -161,22 +186,28 @@ public class FPS_Ben : MonoBehaviour
 
 
         if (clampPitch) pitch = Clamp(pitch, minMaxPitchLook.Item2, minMaxPitchLook.Item1);
-        transform.position = transform.position + velocity;
+        transform.position = Vector3.MoveTowards(transform.position,transform.position + velocity, Mathf.Infinity);
 
-        if ((plrState != PlrState.FreeFall | plrState!= PlrState.Tumble)  && velocity.x <= takeOffSpeed && internalGlideBuffer <1f)
+        if (plrState != PlrState.FreeFall && plrState != PlrState.Tumble && velocity.x <= takeOffSpeed && internalGlideBuffer < 0.01f)
         {
             targetPlayerHeight = hit.point.y + 1f;//ground collision
-            Debug.Log("youre on the ground");
+
+
         }
-        else (targetPlayerHeight) = transform.position.y;
+        else targetPlayerHeight = transform.position.y;
+
+        
+
         float distanceMulti = Clamp(1f - (1f / math.abs(targetPlayerHeight - transform.position.y)), 1f, 0.1f);
-        transform.position = Vector3.Lerp(transform.position, new Vector3(transform.position.x, targetPlayerHeight, transform.position.z), distanceMulti);
+        
+        
+        transform.position = Vector3.MoveTowards(transform.position,Vector3.Lerp(transform.position, new Vector3(transform.position.x, targetPlayerHeight, transform.position.z), distanceMulti),Mathf.Infinity);
 
         
         cam.transform.localRotation = quaternion.Euler(pitch * -0.01f * yLookSensitivity, 0, 0);
         transform.rotation = quaternion.Euler(0, yaw * 0.01f * xLookSensitivity, 0);
-
-        glideBuffer -= Time.deltaTime;
+        //Debug.Log(internalGlideBuffer);
+        internalGlideBuffer = Clamp(internalGlideBuffer - Time.deltaTime, glideBuffer, 0f);
 
        
     }
