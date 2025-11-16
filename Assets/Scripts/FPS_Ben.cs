@@ -154,7 +154,7 @@ public class FPS_Ben : MonoBehaviour
         //wall bonking-----------------
         RaycastHit hitTwo;
         Physics.SphereCast(transform.position, 1f, impliedMoveDir, out hitTwo, 0.2f);
-        if(hitTwo.distance !=0)//bonk
+        if(hitTwo.distance !=0 && Vector3.Angle(hitTwo.normal, Vector3.up) > MaxSlope)//bonk
         {
             float bounceOffAngle = 0;
             float bounceOffSpeedLoss = 1;
@@ -165,7 +165,7 @@ public class FPS_Ben : MonoBehaviour
             velocity = velocity * bounceOffSpeedLoss;
 
             //scootching the player back
-            velocity += hitTwo.normal * (0.1f -hitTwo.distance);
+            transform.position +=  hitTwo.normal * (0.1f -hitTwo.distance);
 
             Debug.Log($"{bounceOffAngle}, {bounceOffSpeedLoss}");
         }
