@@ -14,12 +14,14 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
     private float crouchDist = 0.9f;
     private Vector3 targCamPos;
     private bool canStandup;
+    public GameObject RespawnPoint;
     public enum PlrState
     {
         Sprinting,
         OnGround,
         FreeFall,
         Tumble,
+        Crouching,
     }
     public PlrState plrState = PlrState.OnGround;
     //
@@ -68,12 +70,42 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
     private float yaw;
     void Update()
     {
-        
-        //moving (coppied from other charachter controller (the one that i made in the same project))
-        
-        if (charController.isGrounded)
+        bool lazyBool = false;
+        if(crouch.action.ReadValue<float>() !=0f || canStandup == false)
+        {  
+            lazyBool = true;
+            charController.height = 2 - crouchDist;
+            //charController.center = new Vector3(0,crouchDist,0);
+            transform.localScale = new Vector3(1,0.2f,1);
+            targCamPos = new Vector3(cam.transform.localPosition.x,cameraHeight - crouchDist,cam.transform.localPosition.z);
+
+            //roof check
+            RaycastHit roofHit;
+            Physics.Raycast(transform.position, Vector3.up, out roofHit, charController.height + charController.skinWidth + 0.1f); //0.1f is a buffer
+            if(roofHit.distance != 0)
+            {
+                canStandup = false;
+            }
+            else
+            {
+                canStandup = true;
+            }
+            //
+        }
+        else
         {
-            if (sprint.action.ReadValue<float>() != 0f)
+            charController.height = 2;
+            targCamPos = new Vector3(cam.transform.localPosition.x,cameraHeight,cam.transform.localPosition.z); 
+            transform.localScale = new Vector3(1,1,1);
+            
+            //charController.center = new Vector3(0,0,0);
+        }
+        //moving (coppied from other charachter controller (the one that i made in the same project))
+        RaycastHit floorHit;
+        Physics.Raycast(transform.position, Vector3.down, out floorHit, charController.height - charController.skinWidth- 0.1f);
+        if (charController.isGrounded && Vector3.Angle(floorHit.normal, Vector3.up) <= charController.slopeLimit)
+        {
+            if (sprint.action.ReadValue<float>() != 0f && lazyBool == false)
             {
                 plrState = PlrState.Sprinting;
             }
@@ -89,33 +121,7 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
             plrState = PlrState.FreeFall;
         }
         
-        if(crouch.action.ReadValue<float>() !=0f || canStandup == false)
-        {  
-            charController.height = 2 - crouchDist;
-            //charController.center = new Vector3(0,crouchDist,0);
-            transform.localScale = new Vector3(1,0.2f,1);
-            targCamPos = new Vector3(cam.transform.localPosition.x,cameraHeight - crouchDist,cam.transform.localPosition.z);
-
-            //roof check
-            RaycastHit hit;
-            Physics.Raycast(transform.position, Vector3.up, out hit, charController.height + 0.1f); //0.1f is a buffer
-            if(hit.distance != 0)
-            {
-                canStandup = false;
-            }
-            else
-            {
-                canStandup = true;
-            }
-            //
-        }
-        else
-        {
-            charController.height = 2;
-            targCamPos = new Vector3(cam.transform.localPosition.x,cameraHeight,cam.transform.localPosition.z); 
-            transform.localScale = new Vector3(1,1,1);
-            //charController.center = new Vector3(0,0,0);
-        }
+        
         Debug.Log(targCamPos);
         cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition, targCamPos, Clamp(Time.deltaTime, 1f,0.01f));
         
@@ -142,19 +148,51 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
                 localSpeed = 0;
                 control = 0;
                 break;
+            case PlrState.Crouching:
+                localSpeed = 0;
+                control = 0;
+                break;
         }
         impliedMoveDir += transform.forward * move.action.ReadValue<Vector2>().y * ((float)localSpeed);
         impliedMoveDir += transform.right * move.action.ReadValue<Vector2>().x * ((float)localSpeed);
-        if (plrState == PlrState.FreeFall)
-        {
-            impliedMoveDir += transform.up * -gravity;
-            Debug.Log("e");
-        }
+
+
         velocity = Vector3.Lerp(velocity, impliedMoveDir, control);
-        
         charController.Move(velocity * (Time.deltaTime));
 
+        RaycastHit hitTwo;
+        Physics.SphereCast(transform.position, 1f, impliedMoveDir, out hitTwo, 0.2f);
+        if(hitTwo.distance !=0 && Vector3.Angle(hitTwo.normal, Vector3.up) > charController.slopeLimit)//bonk
+        {
+            float bounceOffAngle = 0;
+            float bounceOffSpeedLoss = 1;
+            bounceOffAngle = Vector3.Angle(hitTwo.normal, Vector3.up);
+            bounceOffSpeedLoss = 0.3F;
+
+            velocity = Vector3.Reflect(velocity, hitTwo.normal);
+            velocity = velocity * bounceOffSpeedLoss;
+
+            
+
+            Debug.Log($"{bounceOffAngle}, {bounceOffSpeedLoss}");
+        }
+
+        if (plrState == PlrState.FreeFall)
+        {
+            impliedMoveDir = transform.up * -gravity;
+            if(Vector3.Angle(floorHit.normal, Vector3.up) > charController.slopeLimit)
+            {
+                Debug.Log("eieio");
+                impliedMoveDir = Vector3.Reflect(impliedMoveDir, floorHit.normal);
+                impliedMoveDir += floorHit.normal * (50f -floorHit.distance); //player was sticking to slopes, so this is bonking them off
+            }
+            //Debug.Log("e");
+        }
         
+
+        velocity = Vector3.Lerp(velocity, impliedMoveDir, 0.001f);
+        
+        charController.Move(velocity * (Time.deltaTime));
 
 
         //looking
@@ -165,5 +203,10 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
 
         cam.transform.localRotation = quaternion.Euler(pitch * -0.01f * yLookSensitivity, 0, 0);
         transform.rotation = quaternion.Euler(0, yaw * 0.01f * xLookSensitivity, 0);
+
+        if(transform.position.y < -50)
+        {
+            transform.position = RespawnPoint.transform.position;
+        }
     }
 }
