@@ -153,12 +153,13 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
                 control = 0;
                 break;
         }
+        
         impliedMoveDir += transform.forward * move.action.ReadValue<Vector2>().y * ((float)localSpeed);
         impliedMoveDir += transform.right * move.action.ReadValue<Vector2>().x * ((float)localSpeed);
 
 
-        velocity = Vector3.Lerp(velocity, impliedMoveDir, control);
-        charController.Move(velocity * (Time.deltaTime));
+        velocity = Vector3.Lerp(velocity, impliedMoveDir, control * Time.deltaTime);
+        
 
         RaycastHit hitTwo;
         Physics.SphereCast(transform.position, 1f, impliedMoveDir, out hitTwo, 0.2f);
@@ -190,9 +191,9 @@ public class ThisIsTheOneUsingTheCharachterController : MonoBehaviour
         }
         
 
-        velocity = Vector3.Lerp(velocity, impliedMoveDir, 0.001f);
+        velocity = Vector3.Lerp(velocity, impliedMoveDir, Time.deltaTime * 0.1f);
         
-        charController.Move(velocity * (Time.deltaTime));
+        charController.Move(velocity * Time.deltaTime);
 
 
         //looking
